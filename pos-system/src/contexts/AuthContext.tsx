@@ -5,6 +5,8 @@ import {
   User, 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword,
+  signInWithPopup,
+  GoogleAuthProvider,
   signOut,
   onAuthStateChanged
 } from 'firebase/auth';
@@ -26,6 +28,7 @@ interface AuthContextType {
   userProfile: UserProfile | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
   signUp: (email: string, password: string, role: UserRole, name: string, phone?: string) => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -65,6 +68,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const signInWithGoogle = async () => {
+    try {
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+      
+      // Check if user profile exists, if not create one
+      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      if (!userDoc.exists()) {
+        const userProfile: UserProfile = {
+          uid: user.uid,
+          email: user.email!,
+          role: 'customer', // Default role for Google sign-in
+          name: user.displayName || user.email!.split('@')[0],
+          phone: user.phoneNumber || undefined,
+        };
+        
+        await setDoc(doc(db, 'users', user.uid), userProfile);
+        setUserProfile(userProfile);
+      }
+    } catch (error) {
+      throw error;
+    }
+  };
+
   const signUp = async (email: string, password: string, role: UserRole, name: string, phone?: string) => {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
@@ -99,6 +127,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     userProfile,
     loading,
     signIn,
+    signInWithGoogle,
     signUp,
     logout,
   };

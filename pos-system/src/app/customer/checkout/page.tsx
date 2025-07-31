@@ -2,22 +2,28 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useCart } from '@/contexts/CartContext';
 import { useRouter } from 'next/navigation';
-import { CartItem, Order, PaymentMethod } from '@/types';
+import { Order, PaymentMethod } from '@/types';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db, storage } from '@/lib/firebase';
 import { QRCodeSVG } from 'qrcode.react';
-import { ArrowLeft, CheckCircle, Clock } from 'lucide-react';
+import { ArrowLeft, CheckCircle, Clock, Upload, Camera } from 'lucide-react';
+import { useDropzone } from 'react-dropzone';
 import toast from 'react-hot-toast';
 
 export default function Checkout() {
   const { user, userProfile } = useAuth();
+  const { cart, totalAmount, clearCart } = useCart();
   const router = useRouter();
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [totalAmount, setTotalAmount] = useState(0);
   const [paymentConfirmed, setPaymentConfirmed] = useState(false);
   const [orderId, setOrderId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [paymentSlip, setPaymentSlip] = useState<File | null>(null);
+  const [paymentSlipUrl, setPaymentSlipUrl] = useState<string>('');
+  const [uploadingSlip, setUploadingSlip] = useState(false);
+  const [showSlipUpload, setShowSlipUpload] = useState(false);
 
   useEffect(() => {
     if (!user || !userProfile) {
@@ -25,39 +31,17 @@ export default function Checkout() {
       return;
     }
 
-    // In a real app, you'd get cart from context or localStorage
-    // For demo purposes, we'll create some sample data
-    const sampleCart: CartItem[] = [
-      {
-        menuItem: {
-          id: '1',
-          name: 'กาแฟดำ',
-          price: 45,
-          category: 'กาแฟ',
-          available: true,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-        quantity: 2,
-      },
-      {
-        menuItem: {
-          id: '2',
-          name: 'ชาเขียว',
-          price: 35,
-          category: 'ชา',
-          available: true,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-        quantity: 1,
-      },
-    ];
+    if (userProfile.role !== 'customer') {
+      router.push('/');
+      return;
+    }
 
-    setCart(sampleCart);
-    const total = sampleCart.reduce((sum, item) => sum + (item.menuItem.price * item.quantity), 0);
-    setTotalAmount(total);
-  }, [user, userProfile, router]);
+    // Check if cart is empty
+    if (cart.length === 0) {
+      router.push('/customer/menu');
+      return;
+    }
+  }, [user, userProfile, cart, router]);
 
   const generatePromptPayQR = () => {
     // In a real app, you'd generate a proper PromptPay QR code
@@ -67,7 +51,46 @@ export default function Checkout() {
     return `00020101021229370016A000000677010112011300660000000005802TH5303764540${amount.toFixed(2)}6304`;
   };
 
+  const uploadPaymentSlip = async (file: File): Promise<string> => {
+    const storageRef = ref(storage, `payment-slips/${user!.uid}/${Date.now()}_${file.name}`);
+    const snapshot = await uploadBytes(storageRef, file);
+    return await getDownloadURL(snapshot.ref);
+  };
+
+  const handleSlipUpload = async (acceptedFiles: File[]) => {
+    if (acceptedFiles.length === 0) return;
+    
+    const file = acceptedFiles[0];
+    setPaymentSlip(file);
+    setUploadingSlip(true);
+    
+    try {
+      const url = await uploadPaymentSlip(file);
+      setPaymentSlipUrl(url);
+      toast.success('อัปโหลดสลิปสำเร็จ!');
+    } catch (error) {
+      toast.error('เกิดข้อผิดพลาดในการอัปโหลดสลิป');
+      setPaymentSlip(null);
+    } finally {
+      setUploadingSlip(false);
+    }
+  };
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop: handleSlipUpload,
+    accept: {
+      'image/*': ['.png', '.jpg', '.jpeg']
+    },
+    maxFiles: 1,
+    maxSize: 5 * 1024 * 1024, // 5MB
+  });
+
   const handlePaymentConfirmation = async () => {
+    if (!paymentSlipUrl) {
+      toast.error('กรุณาอัปโหลดสลิปการชำระเงินก่อน');
+      return;
+    }
+
     setLoading(true);
     
     try {
@@ -82,16 +105,19 @@ export default function Checkout() {
         paymentMethod: 'promptpay' as PaymentMethod,
         createdAt: new Date(),
         updatedAt: new Date(),
+        notes: `Payment slip: ${paymentSlipUrl}`,
       };
 
       const docRef = await addDoc(collection(db, 'orders'), {
         ...orderData,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
+        paymentSlipUrl: paymentSlipUrl,
       });
 
       setOrderId(docRef.id);
       setPaymentConfirmed(true);
+      clearCart(); // Clear cart after successful order
       toast.success('ออเดอร์ถูกสร้างเรียบร้อยแล้ว!');
     } catch (error) {
       toast.error('เกิดข้อผิดพลาดในการสร้างออเดอร์');
@@ -177,15 +203,37 @@ export default function Checkout() {
                 </p>
                 
                 <button
+                  onClick={() => setShowSlipUpload(true)}
+                  className="w-full bg-green-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center justify-center space-x-2"
+                >
+                  <Camera className="h-5 w-5" />
+                  <span>อัปโหลดสลิปการชำระเงิน</span>
+                </button>
+
+                {paymentSlipUrl && (
+                  <div className="text-center space-y-2">
+                    <div className="text-green-600 flex items-center justify-center space-x-2">
+                      <CheckCircle className="h-5 w-5" />
+                      <span>สลิปอัปโหลดเรียบร้อยแล้ว</span>
+                    </div>
+                    <img
+                      src={paymentSlipUrl}
+                      alt="Payment Slip"
+                      className="w-32 h-40 object-cover rounded-lg mx-auto border-2 border-green-200"
+                    />
+                  </div>
+                )}
+                
+                <button
                   onClick={handlePaymentConfirmation}
-                  disabled={loading}
+                  disabled={loading || !paymentSlipUrl}
                   className="w-full bg-indigo-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loading ? 'กำลังประมวลผล...' : 'ยืนยันการชำระเงิน'}
                 </button>
                 
                 <p className="text-xs text-gray-500">
-                  * สำหรับการทดสอบ กรุณากดปุ่ม "ยืนยันการชำระเงิน" เพื่อจำลองการสแกน QR Code
+                  * กรุณาอัปโหลดสลิปการชำระเงินก่อนยืนยันออเดอร์
                 </p>
               </div>
             </div>
@@ -228,6 +276,76 @@ export default function Checkout() {
               >
                 สั่งอาหารเพิ่ม
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* Payment Slip Upload Modal */}
+        {showSlipUpload && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg max-w-md w-full p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold">อัปโหลดสลิปการชำระเงิน</h3>
+                <button
+                  onClick={() => setShowSlipUpload(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div 
+                {...getRootProps()} 
+                className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
+                  isDragActive 
+                    ? 'border-indigo-500 bg-indigo-50' 
+                    : 'border-gray-300 hover:border-indigo-400'
+                }`}
+              >
+                <input {...getInputProps()} />
+                <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                
+                {uploadingSlip ? (
+                  <div className="space-y-2">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600 mx-auto"></div>
+                    <p className="text-sm text-gray-600">กำลังอัปโหลด...</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-sm text-gray-600">
+                      ลากและวางไฟล์ที่นี่ หรือคลิกเพื่อเลือกไฟล์
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      รองรับไฟล์: PNG, JPG, JPEG (สูงสุด 5MB)
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {paymentSlip && !uploadingSlip && (
+                <div className="mt-4 p-3 bg-green-50 rounded-lg">
+                  <div className="flex items-center space-x-2 text-green-700">
+                    <CheckCircle className="h-5 w-5" />
+                    <span className="text-sm font-medium">อัปโหลดสำเร็จ: {paymentSlip.name}</span>
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-6 flex space-x-3">
+                <button
+                  onClick={() => setShowSlipUpload(false)}
+                  className="flex-1 py-2 px-4 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  onClick={() => setShowSlipUpload(false)}
+                  disabled={!paymentSlipUrl}
+                  className="flex-1 py-2 px-4 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  ตกลง
+                </button>
+              </div>
             </div>
           </div>
         )}
