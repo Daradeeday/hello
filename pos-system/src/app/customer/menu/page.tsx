@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useCart } from '@/contexts/CartContext';
 import { useRouter } from 'next/navigation';
-import { MenuItem, CartItem } from '@/types';
+import { MenuItem } from '@/types';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import MenuItemCard from '@/components/customer/MenuItemCard';
@@ -13,9 +14,9 @@ import toast from 'react-hot-toast';
 
 export default function CustomerMenu() {
   const { user, userProfile, logout } = useAuth();
+  const { cart, totalItems, totalAmount, addToCart, updateQuantity, removeFromCart } = useCart();
   const router = useRouter();
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
-  const [cart, setCart] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCart, setShowCart] = useState(false);
 
@@ -49,38 +50,9 @@ export default function CustomerMenu() {
     }
   };
 
-  const addToCart = (menuItem: MenuItem) => {
-    setCart(prevCart => {
-      const existingItem = prevCart.find(item => item.menuItem.id === menuItem.id);
-      if (existingItem) {
-        return prevCart.map(item =>
-          item.menuItem.id === menuItem.id
-            ? { ...item, quantity: item.quantity + 1 }
-            : item
-        );
-      } else {
-        return [...prevCart, { menuItem, quantity: 1 }];
-      }
-    });
+  const handleAddToCart = (menuItem: MenuItem) => {
+    addToCart(menuItem);
     toast.success('เพิ่มลงตะกร้าแล้ว');
-  };
-
-  const removeFromCart = (menuItemId: string) => {
-    setCart(prevCart => prevCart.filter(item => item.menuItem.id !== menuItemId));
-  };
-
-  const updateQuantity = (menuItemId: string, quantity: number) => {
-    if (quantity <= 0) {
-      removeFromCart(menuItemId);
-      return;
-    }
-    setCart(prevCart =>
-      prevCart.map(item =>
-        item.menuItem.id === menuItemId
-          ? { ...item, quantity }
-          : item
-      )
-    );
   };
 
   const handleLogout = async () => {
@@ -92,8 +64,7 @@ export default function CustomerMenu() {
     }
   };
 
-  const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
-  const totalAmount = cart.reduce((sum, item) => sum + (item.menuItem.price * item.quantity), 0);
+
 
   if (loading) {
     return (
@@ -149,7 +120,7 @@ export default function CustomerMenu() {
             <MenuItemCard
               key={item.id}
               item={item}
-              onAddToCart={() => addToCart(item)}
+              onAddToCart={() => handleAddToCart(item)}
             />
           ))}
         </div>

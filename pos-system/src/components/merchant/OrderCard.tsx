@@ -1,7 +1,8 @@
 'use client';
 
 import { Order } from '@/types';
-import { Clock, CheckCircle, Package, Truck, User, Phone } from 'lucide-react';
+import { Clock, CheckCircle, Package, Truck, User, Phone, Image, Eye } from 'lucide-react';
+import { useState } from 'react';
 
 interface OrderCardProps {
   order: Order;
@@ -9,6 +10,7 @@ interface OrderCardProps {
 }
 
 export default function OrderCard({ order, onUpdateStatus }: OrderCardProps) {
+  const [showPaymentSlip, setShowPaymentSlip] = useState(false);
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'pending':
@@ -150,6 +152,25 @@ export default function OrderCard({ order, onUpdateStatus }: OrderCardProps) {
           </div>
         </div>
         
+        {/* Payment Slip */}
+        {(order as any).paymentSlipUrl && (
+          <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Image className="h-4 w-4 text-blue-600" />
+                <span className="text-sm font-medium text-blue-800">สลิปการชำระเงิน</span>
+              </div>
+              <button
+                onClick={() => setShowPaymentSlip(true)}
+                className="flex items-center space-x-1 text-blue-600 hover:text-blue-800 transition-colors"
+              >
+                <Eye className="h-4 w-4" />
+                <span className="text-sm">ดูสลิป</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {order.notes && (
           <div className="mt-4 p-3 bg-gray-50 rounded-lg">
             <p className="text-sm text-gray-700">
@@ -168,6 +189,43 @@ export default function OrderCard({ order, onUpdateStatus }: OrderCardProps) {
           >
             {getNextStatusText(order.status)}
           </button>
+        </div>
+      )}
+
+      {/* Payment Slip Modal */}
+      {showPaymentSlip && (order as any).paymentSlipUrl && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-2xl w-full p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">สลิปการชำระเงิน - ออเดอร์ #{order.id.slice(-8)}</h3>
+              <button
+                onClick={() => setShowPaymentSlip(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="text-center">
+              <img
+                src={(order as any).paymentSlipUrl}
+                alt="Payment Slip"
+                className="max-w-full max-h-96 mx-auto rounded-lg shadow-lg"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = '/placeholder-image.png';
+                }}
+              />
+            </div>
+
+            <div className="mt-6 flex justify-center">
+              <button
+                onClick={() => setShowPaymentSlip(false)}
+                className="px-6 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                ปิด
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

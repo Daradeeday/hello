@@ -80,7 +80,7 @@ export default function Home() {
         </div>
 
         <div className="mt-12 text-center">
-          <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+          <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
             <div className="bg-white rounded-lg shadow-lg p-6">
               <div className="text-3xl mb-4">🏪</div>
               <h3 className="text-xl font-semibold mb-2">สำหรับร้านค้า</h3>
@@ -92,8 +92,21 @@ export default function Home() {
               <div className="text-3xl mb-4">👤</div>
               <h3 className="text-xl font-semibold mb-2">สำหรับลูกค้า</h3>
               <p className="text-gray-600">
-                ดูเมนู สั่งอาหาร และชำระเงินผ่าน PromptPay
+                ดูเมนู สั่งเครื่องดื่ม และชำระเงินผ่าน PromptPay
               </p>
+            </div>
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <div className="text-3xl mb-4">🔐</div>
+              <h3 className="text-xl font-semibold mb-2">สำหรับผู้ดูแล</h3>
+              <p className="text-gray-600">
+                จัดการร้านค้า และดูสถิติการใช้งานระบบ
+              </p>
+              <button
+                onClick={() => router.push('/admin')}
+                className="mt-4 text-sm text-indigo-600 hover:text-indigo-800 transition-colors"
+              >
+                เข้าสู่ระบบผู้ดูแล →
+              </button>
             </div>
           </div>
         </div>
